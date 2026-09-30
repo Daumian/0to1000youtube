@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>0 a 1000 vistas</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+  h1 { font-size: 1.2rem; margin: 0 0 12px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  button { background: #e11d48; color: #fff; border: 0; padding: 10px 18px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  input { padding: 9px; border-radius: 8px; border: 1px solid #444; background: #222; color: #eee; flex: 1; min-width: 180px; }
+  #status { font-size: .85rem; color: #aaa; margin-bottom: 12px; min-height: 1.2em; }
+  #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 700px) { #grid { grid-template-columns: repeat(2, 1fr); } }
+  .card { background: #1c1c1c; border-radius: 8px; overflow: hidden; }
+  .card .ratio { position: relative; padding-top: 56.25%; }
+  .card iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .card .info { padding: 8px; font-size: .75rem; line-height: 1.3; }
+  .card .views { color: #f59e0b; }
+</style>
+</head>
+<body>
+<h1>🎲 Música con menos de 1000 vistas</h1>
+
+<div class="bar">
+  <input id="key" type="password" placeholder="Tu API key de YouTube Data v3">
+  <button id="go">🎲 Aleatorio</button>
+</div>
+<div id="status"></div>
+<div id="grid"></div>
+
+<script>
+const API = 'https://www.googleapis.com/youtube/v3';
+const MAX_VIEWS = 1000;
+const WANT = 6;
+const $ = id => document.getElementById(id);
+
+$('key').value = localStorage.getItem('yt_key') || '';
+
+// Fecha random entre 2010 y ayer, con una ventana de 1 hora dentro de ese día
+function randomWindow() {
+  const start = Date.UTC(2010, 0, 1);
+  const end = Date.now() - 86400000;
+  const day = new Date(start + Math.random() * (end - start));
+  day.setUTCHours(Math.floor(Math.random() * 24), 0, 0, 0);
+  return { from: day, to: new Date(day.getTime() + 3600000) };
+}
+
+async function api(path, params) {
+  const url = API + path + '?' + new URLSearchParams({ ...params, key: $('key').value.trim() });
+  const r = await fetch(url);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message || r.status);
+  return j;
+}
+
+async function fetchBatch() {
+  const { from, to } = randomWindow();
+  const s = await api('/search', {
+    part: 'snippet', type: 'video', videoCategoryId: '10', videoEmbeddable: 'true',
+    maxResults: 50, publishedAfter: from.toISOString(), publishedBefore: to.toISOString(),
+  });
+  const ids = s.items.map(i => i.id.videoId);
+  if (!ids.length) return { list: [], from };
+  const v = await api('/videos', { part: 'statistics,snippet', id: ids.join(',') });
+  const list = v.items
+    .filter(i => +(i.statistics.viewCount || 0) < MAX_VIEWS)
+    .map(i => ({ id: i.id, title: i.snippet.title, views: +(i.statistics.viewCount || 0), date: i.snippet.publishedAt }));
+  return { list, from };
+}
+
+async function load() {
+  if (!$('key').value.trim()) { $('status').textContent = '⚠️ Falta la API key'; return; }
+  localStorage.setItem('yt_key', $('key').value.trim());
+  $('go').disabled = true;
+  let found = [];
+  try {
+    for (let tries = 1; tries <= 10 && found.length < WANT; tries++) {
+      $('status').textContent = `🔎 Buscando... (intento ${tries})`;
+      const { list, from } = await fetchBatch();
+      list.sort(() => Math.random() - 0.5);
+      found = found.concat(list).slice(0, WANT);
+      $('status').textContent = `📅 Día: ${from.toISOString().slice(0, 10)} · ${found.length}/${WANT}`;
+    }
+    $('grid').innerHTML = found.map(c => `
+      <div class="card">
+        <div class="ratio"><iframe src="https://www.youtube.com/embed/${c.id}" allowfullscreen loading="lazy"
+          allow="accelerometer; encrypted-media; picture-in-picture"></iframe></div>
+        <div class="info">${c.title.replace(/</g, '&lt;')}<br>
+          <span class="views">👁 ${c.views} vistas</span> · ${c.date.slice(0, 10)}</div>
+      </div>`).join('');
+    if (!found.length) $('status').textContent = '😕 No encontramos nada, probá de nuevo';
+  } catch (e) {
+    $('status').textContent = '❌ ' + e.message;
+  }
+  $('go').disabled = false;
+}
+
+$('go').onclick = load;
+</script>
+</body>
+</html>
