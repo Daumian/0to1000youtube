@@ -39,13 +39,13 @@ const $ = id => document.getElementById(id);
 
 $('key').value = localStorage.getItem('yt_key') || '';
 
-// Fecha random entre 2010 y ayer, con una ventana de 1 hora dentro de ese día
+// Día random entre 2010 y ayer (ventana de 24 hs)
 function randomWindow() {
   const start = Date.UTC(2010, 0, 1);
   const end = Date.now() - 86400000;
   const day = new Date(start + Math.random() * (end - start));
-  day.setUTCHours(Math.floor(Math.random() * 24), 0, 0, 0);
-  return { from: day, to: new Date(day.getTime() + 3600000) };
+  day.setUTCHours(0, 0, 0, 0);
+  return { from: day, to: new Date(day.getTime() + 86400000) };
 }
 
 async function api(path, params) {
@@ -86,7 +86,7 @@ async function load() {
     }
     $('grid').innerHTML = found.map(c => `
       <div class="card">
-        <div class="ratio"><iframe src="https://www.youtube.com/embed/${c.id}" allowfullscreen loading="lazy"
+        <div class="ratio"><iframe src="https://www.youtube.com/embed/${c.id}" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
           allow="accelerometer; encrypted-media; picture-in-picture"></iframe></div>
         <div class="info">${c.title.replace(/</g, '&lt;')}<br>
           <span class="views">👁 ${c.views} vistas</span> · ${c.date.slice(0, 10)}</div>
